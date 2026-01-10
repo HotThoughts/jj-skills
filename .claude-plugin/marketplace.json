@@ -1,0 +1,15 @@
+{
+  "name": "jj-skills",
+  "owner": {
+    "name": "Yiyao Wei",
+    "url": "https://github.com/HotThoughts"
+  },
+  "plugins": [
+    {
+      "name": "jj",
+      "source": "./",
+      "description": "Claude Skills for Jujutsu",
+      "version": "1.0.0"
+    }
+  ]
+}

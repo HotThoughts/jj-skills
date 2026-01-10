@@ -1,0 +1,16 @@
+{
+  "name": "jj",
+  "description": "Claude Code skills for the Jujutsu (jj) version control system",
+  "version": "1.0.0",
+  "author": {
+    "name": "Yiyao Wei",
+    "url": "https://github.com/HotThoughts"
+  },
+  "repository": "https://github.com/HotThoughts/jj-skills",
+  "license": "MIT",
+  "keywords": [
+    "jj",
+    "Jujutsu",
+    "versioncontrol"
+  ]
+}
