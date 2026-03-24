@@ -7,6 +7,24 @@ description: Guides Claude on using Jujutsu (jj) version control system. Use whe
 
 Jujutsu is a modern version control system that provides a simpler mental model than Git while remaining Git-compatible. This skill covers the core concepts and workflow commands.
 
+## CRITICAL: Avoid Interactive Mode
+
+Always use `-m` to prevent jj from opening an editor:
+
+```bash
+# WRONG — opens editor, blocks AI
+jj new
+jj describe
+jj squash
+
+# CORRECT — non-interactive
+jj new -m "message"
+jj describe -m "message"
+jj squash -m "message"
+```
+
+`jj split` is inherently interactive — no non-interactive mode exists. Use `jj restore --from @- <path>` to remove a file from the current change instead.
+
 ## Core Concepts
 
 ### Changes vs Commits
@@ -18,6 +36,20 @@ Jujutsu is a modern version control system that provides a simpler mental model 
 - The working copy is denoted by `@` and represents your current state.
 - `@-` refers to the parent of the working copy.
 - Unlike Git, there's no staging area—all changes are automatically tracked.
+
+## When to Use What
+
+| Situation | Do This |
+| --- | --- |
+| Starting new work | `jj new -m "what I'm trying"` |
+| Forgot to start with jj new | `jj describe -m "what I'm doing"` (do this immediately) |
+| Work is done, move on | `jj new -m "next task"` |
+| Annotate what you did | `jj describe -m "feat: auth"` |
+| Broke something | `jj op log` → `jj op restore <id>` |
+| Undo one file | `jj restore --from @- <path>` |
+| Exclude file from current change | `jj restore --from @- <path>` |
+| Combine messy commits | `jj squash -m "combined message"` |
+| Try something risky | `jj new -m "experiment"`, then `jj abandon @` if it fails |
 
 ## Permission Requirements
 
@@ -59,18 +91,18 @@ jj git push        # Push current changes to remote
 ### Modifying History
 
 ```bash
-jj squash                    # Squash current change into parent
-jj squash --into @-          # Explicitly squash into parent
-jj split <file> -m "msg"     # Split specific files into their own commit
-jj edit <change-id>          # Edit an existing change
+jj squash                        # Squash current change into parent
+jj squash --into @-              # Explicitly squash into parent
+jj restore --from @- <path>      # Remove a file from current change (non-interactive alternative to split)
+jj edit <change-id>              # Edit an existing change
 ```
 
-### Working with Branches
+### Working with Bookmarks
 
 ```bash
-jj branch create <name>      # Create a branch pointing to @
-jj branch set <name>         # Move branch to current change
-jj branch list               # List all branches
+jj bookmark create <name> -r @  # Create a bookmark at @
+jj bookmark set <name> -r @     # Move bookmark to @
+jj bookmark list                 # List all bookmarks
 ```
 
 ## Commit Message Format
@@ -112,7 +144,17 @@ jj tug    # Fetches and rebases in one command
 
 ### Viewing What Will Be Pushed
 ```bash
-jj log -r 'remote_branches()..@'    # Changes not yet on remote
+jj log -r 'remote_bookmarks()..@'    # Changes not yet on remote
+```
+
+## Recovery
+
+The operation log records every operation. Nothing is lost.
+
+```bash
+jj op log              # See all operations
+jj undo                # Undo last operation
+jj op restore <id>     # Jump to any past state
 ```
 
 ## Key Differences from Git

@@ -68,6 +68,21 @@ Brief description of what this PR accomplishes.
 
 ### Step 5: Push the Change
 
+First check if the change already has a named bookmark:
+
+```bash
+jj log -r <change> -T 'bookmarks' --no-graph
+```
+
+If no bookmark exists, create one by slugifying the change description (e.g. `"feat: add auth"` → `feat-add-auth`):
+
+```bash
+jj bookmark create <slug> -r <change>
+jj git push --bookmark <slug>
+```
+
+Fallback — let jj auto-create a `push-<hash>` bookmark:
+
 ```bash
 jj git push -c <change>
 ```
@@ -75,11 +90,6 @@ jj git push -c <change>
 Parse the branch name from output. Look for patterns:
 - `Creating bookmark <branch>` or `Add bookmark <branch>`
 - `Move sideways bookmark <branch> from`
-
-Fallback if not found:
-```bash
-jj log -r <change> -T 'bookmarks' --no-graph
-```
 
 ### Step 6: Get Default Branch
 
@@ -113,9 +123,12 @@ jj log -r @- -T description --no-graph | head -1
 jj diff -r @-
 # (analyze the output)
 
-# 3. Push change
-jj git push -c @-
-# Output: "Creating bookmark push-abc123..."
+# 3. Check for existing bookmark, create one if missing
+jj log -r @- -T 'bookmarks' --no-graph
+# Output: (empty — no bookmark yet)
+jj bookmark create feat-add-user-authentication -r @-
+jj git push --bookmark feat-add-user-authentication
+# Output: "Add bookmark feat-add-user-authentication..."
 
 # 4. Get default branch
 gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
@@ -124,7 +137,7 @@ gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
 # 5. Create PR with generated description
 gh pr create \
   --base main \
-  --head push-abc123 \
+  --head feat-add-user-authentication \
   --title "feat: add user authentication" \
   --body "## Summary
 Adds JWT-based user authentication to the API.
