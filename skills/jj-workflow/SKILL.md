@@ -73,6 +73,23 @@ jj branch set <name>         # Move branch to current change
 jj branch list               # List all branches
 ```
 
+### Working with Workspaces
+
+Workspaces are jj's equivalent of git worktrees — multiple working directories backed by the same repository. Each workspace has its own `@` (working copy), enabling true parallel development without branch locking.
+
+```bash
+jj workspace add <path>          # Create new workspace at path (e.g., ../myproject-fix)
+jj workspace list                # List all workspaces with their @ revisions
+jj workspace forget <name>       # Stop tracking a workspace (run from another workspace)
+jj workspace root                # Print the root path of current workspace
+jj workspace update-stale        # Fix a stale working copy after concurrent changes
+```
+
+**Key differences from git worktrees:**
+- No branch locking — multiple workspaces can check out the same revision simultaneously
+- Each workspace gets its own `@` change automatically on creation
+- Changes made in one workspace don't affect another's `@`
+
 ## Commit Message Format
 
 Use **Conventional Commits** format:
@@ -115,6 +132,29 @@ jj tug    # Fetches and rebases in one command
 jj log -r 'remote_branches()..@'    # Changes not yet on remote
 ```
 
+### Working with Multiple Workspaces
+
+```bash
+# Create a new workspace for parallel work
+jj workspace add ../myproject-hotfix
+cd ../myproject-hotfix
+jj new -m "fix: critical hotfix"     # New @ in the new workspace
+# ... make changes, push, etc. ...
+
+# Back in original workspace — unaffected
+cd ../myproject
+jj log                               # Other workspace's changes appear in shared history
+
+# Clean up when done
+jj workspace forget hotfix           # Run from any other workspace
+rm -rf ../myproject-hotfix           # Remove the directory
+```
+
+**Use cases:**
+- Run long test suites in one workspace while coding in another
+- Work on a hotfix without disturbing your in-progress feature
+- Compare file states across different revisions simultaneously
+
 ## Key Differences from Git
 
 1. **No staging area**: All changes are tracked automatically
@@ -122,3 +162,4 @@ jj log -r 'remote_branches()..@'    # Changes not yet on remote
 3. **Change IDs**: Stable identifiers that persist through rebases
 4. **Anonymous branches**: You can work without named branches
 5. **Automatic conflict handling**: Conflicts are recorded and can be resolved later
+6. **Workspaces**: Multiple working copies without branch locking (vs git worktrees which require a unique branch per worktree)
