@@ -48,6 +48,8 @@ jj squash -m "message"
 | Broke something | `jj op log` → `jj op restore <id>` |
 | Undo one file | `jj restore --from @- <path>` |
 | Exclude file from current change | `jj restore --from @- <path>` |
+| Stop tracking an ignored file | Add ignore rule first, then `jj file untrack <path>` |
+| Stop tracking ignored directory contents | Add ignore rule first, then `jj file untrack 'glob:dir/**'` |
 | Combine messy commits | `jj squash -m "combined message"` |
 | Try something risky | `jj new -m "experiment"`, then `jj abandon @` if it fails |
 
@@ -94,8 +96,28 @@ jj git push        # Push current changes to remote
 jj squash                        # Squash current change into parent
 jj squash --into @-              # Explicitly squash into parent
 jj restore --from @- <path>      # Remove a file from current change (non-interactive alternative to split)
+jj file untrack <path>           # Stop tracking a path that is already ignored
 jj edit <change-id>              # Edit an existing change
 ```
+
+### Untracking Ignored Files
+
+Use `jj file untrack` when a file should stay on disk locally but stop being tracked by jj. This is an ignore-driven workflow: add the path to `.gitignore` first, then untrack it.
+
+`jj file untrack` only works for paths that are already ignored, usually via `.gitignore` or `.git/info/exclude` in colocated workspaces.
+
+```bash
+# 1. Add an ignore rule first
+echo "local-config.json" >> .gitignore
+
+# 2. Stop tracking the ignored file
+jj file untrack local-config.json
+
+# Untrack ignored directory contents with a fileset glob
+jj file untrack 'glob:.agents/**'
+```
+
+Use `jj restore --from @- <path>` when you only want to remove a path from the current change. Use `jj file untrack <path>` when you want jj to stop tracking an ignored path going forward.
 
 ### Working with Bookmarks
 
