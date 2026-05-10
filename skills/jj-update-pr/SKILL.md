@@ -45,6 +45,14 @@ Extract the first line of the change's description:
 jj log -r <change> -T description --no-graph | head -1
 ```
 
+If the description is empty, run the **Description Check Protocol** (see `jj-workflow` skill) to generate a conventional commit description from the diff, then re-extract the title:
+
+1. Check `jj status` — if `@` is a placeholder (no modified files), evaluate `@-` carefully: verify it has a non-empty diff AND no trunk bookmarks (`main`, `master`, `main@origin`) before targeting it. If `@-` carries a trunk bookmark, ask the user which change to use.
+2. Analyze `jj diff -r <change>` to understand what changed
+3. Determine the conventional commit type (feat/fix/refactor/perf/docs/chore/test) from the diff
+4. Set the description: `jj describe -r <change> -m "type: concise description"` (or use `--stdin` if preserving an existing body — see jj-workflow protocol)
+5. Re-run the title extraction command to get the exact first line
+
 ### Step 5: Analyze the Current Diff
 
 ```bash
@@ -97,9 +105,10 @@ jj log -r @- -T 'bookmarks' --no-graph
 gh pr view push-abc123
 # (shows PR details)
 
-# 3. Get updated title
+# 3. Get updated title (generates one from diff if description is empty — see Step 4)
 jj log -r @- -T description --no-graph | head -1
 # Output: "feat: add user authentication"
+# If empty: run the Description Check Protocol to generate one, then re-extract
 
 # 4. Get current diff
 jj diff -r @-
