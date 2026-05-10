@@ -42,7 +42,9 @@ jj squash -m "message"
 | Situation | Do This |
 | --- | --- |
 | Starting new work | `jj new -m "what I'm trying"` |
-| Forgot to start with jj new | `jj describe -m "what I'm doing"` (do this immediately) |
+| Forgot to start with jj new | `jj describe -r @ -m "type: what I'm doing"` (do this immediately) |
+| Change has no description | Run the **Description Check Protocol** (see below) |
+| `jj git push` rejected with "no description set" | `jj describe -r <change> -m "type: message"` |
 | Work is done, move on | `jj new -m "next task"` |
 | Annotate what you did | `jj describe -m "feat: auth"` |
 | Broke something | `jj op log` → `jj op restore <id>` |
@@ -77,18 +79,22 @@ jj show @          # Show current change details
 ### Creating and Describing Changes
 
 ```bash
-jj new                           # Create a new empty change on top of @
-jj describe -m "feat: message"   # Set commit message for current change
-jj new -m "feat: message"        # Create new change with message
+jj new                                # Create a new empty change on top of @
+jj describe -r @ -m "feat: message"   # Set commit message for current change (always use -r to target explicitly)
+jj new -m "feat: message"             # Create new change with message
 ```
 
 ### Syncing with Remote
 
 ```bash
-jj tug             # Fetch updates and rebase current change onto latest remote
-jj git fetch       # Fetch from remote without rebasing
-jj git push        # Push current changes to remote
+jj tug                         # Fetch updates and rebase current change onto latest remote
+jj git fetch                   # Fetch from remote without rebasing
+jj git push                    # Push current changes to remote (requires description on the change)
+jj git push --bookmark <name>  # Push AND set up remote tracking (like git push -u origin <branch>)
 ```
+
+`jj git push` will **reject changes without descriptions** ("no description set"). Always run the Description Check Protocol before pushing.
+`jj git push --bookmark <name>` is the unified push+track command — it creates the bookmark on the remote and sets up tracking in one step.
 
 ### Modifying History
 
@@ -158,9 +164,124 @@ Use **Conventional Commits** format:
 
 Examples:
 ```bash
-jj describe -m "feat: add user authentication"
-jj describe -m "fix: resolve null pointer in parser"
-jj describe -m "refactor: extract validation logic"
+jj describe -r @ -m "feat: add user authentication"
+jj describe -r @ -m "fix: resolve null pointer in parser"
+jj describe -r @ -m "refactor: extract validation logic"
+```
+
+## Description Check Protocol
+
+**Always run this protocol before pushing or creating a PR.** `jj git push` rejects changes without descriptions. This is a hard requirement, not a quality preference.
+
+### Step 1: Check if a description exists
+
+```bash
+# Check the first line (used as PR title)
+jj log -r <change> -T description --no-graph | head -1
+
+# If first line is blank, check for an existing body
+jj log -r <change> -T description --no-graph | tail -n +2
+```
+
+**Gate logic:**
+
+- **First line is non-empty**: The change has a meaningful description — stop here. Do not overwrite.
+- **First line is blank AND no body**: Proceed to Step 2 to generate a full description.
+- **First line is blank BUT body exists**: Generate a title only, then prepend it to the existing body using `jj describe --stdin` (see Step 5). Never use `-m` in this case — it would replace the body.
+
+### Step 2: Pick the right change
+
+Default to `@` (working copy), but verify with `jj status` first:
+
+- If `@` has modified files, use `@`.
+- If `@` has no modified files (fresh "next task" placeholder), check `@-` before using it:
+
+```bash
+# Check if @- has actual work
+jj diff -r @-
+
+# Check @- bookmarks for trunk markers
+jj log -r @- -T 'bookmarks' --no-graph
+```
+
+**Safety gate — stop and ask the user if ANY of these are true:**
+
+- `@-` has an empty diff (nothing to describe)
+- `@-` carries a trunk bookmark (`main`, `master`, or any bookmark with `@origin` suffix like `main@origin`)
+- `@-` has no bookmark AND no diff (ambiguous — could be a bare trunk ancestor)
+
+Only proceed with `@-` when it has a non-empty diff AND no trunk/remote bookmarks. If `@-` carries `main` because work was rebased onto it during conflict resolution, it will have a non-empty diff — but still ask the user to confirm before mutating a revision that holds a trunk bookmark.
+
+### Step 3: Analyze the diff
+
+```bash
+jj diff -r <change>
+```
+
+Focus on the high-level nature of changes: file paths, new vs modified files, and the overall purpose. If the diff is empty, warn that there are no changes to describe — do not generate a description.
+
+### Step 4: Determine the conventional commit type
+
+Map the diff content to a type:
+
+| Type | Signals in the diff |
+|---|---|
+| `feat:` | New files, new functions/exports, new API routes, new components, new public methods |
+| `fix:` | Bug fixes, error handling additions, null/type guards, boundary condition checks |
+| `refactor:` | Code moves/renames, extractions, restructuring with no new behavior |
+| `perf:` | Caching, async/parallel, lazy loading, memoization, reduced allocations |
+| `docs:` | Only documentation files changed (README, markdown, comments, JSDoc) |
+| `chore:` | Dependencies, config files, CI/CD, build tooling, formatting, lint rules |
+| `test:` | Only test files changed (`*_test.*`, `*.spec.*`, `__tests__/`, test fixtures) |
+
+**Priority when multiple types apply**: if only docs changed → `docs:`; if only tests changed → `test:`; otherwise use the first matching type from: `feat > fix > perf > refactor > chore`.
+
+### Step 5: Generate and apply the description
+
+**Case A: No existing description (most common)**
+
+```bash
+jj describe -r <change> -m "type: concise imperative description"
+```
+
+**Case B: Blank first line but existing body (from Step 1 gate)**
+
+Use `--stdin` to prepend the title while preserving the body:
+
+```bash
+printf 'type: concise title\n\n' | cat - <(jj log -r <change> -T description --no-graph | tail -n +2) | jj describe -r <change> --stdin
+```
+
+Never use `-m` for this case — it would replace the entire description and lose the body.
+
+Rules for the description:
+- Use present tense imperative mood ("add" not "adds" or "added")
+- Keep it under 72 characters
+- No trailing period
+- Capitalize after the colon only for proper nouns
+
+### Edge Cases
+
+- **Empty diff**: Warn the user — there's nothing to describe. Do not generate a placeholder.
+- **Existing description (non-empty first line)**: Never overwrite. The check in Step 1 gates on the first line being empty.
+- **Blank first line with body**: Use Case B in Step 5 (`--stdin`) to prepend a title while preserving the existing body. Never use `-m`.
+- **Large diff**: Focus on the most significant files and changes. Don't try to enumerate every line.
+- **`@-` with trunk bookmark**: If `@-` carries `main`, `master`, or a remote-tracking bookmark (e.g., `main@origin`), stop and ask the user which change to target. See Step 2 safety gate.
+
+### Common Pattern: Ensuring a Change Has a Description
+
+```bash
+# 1. Check current description
+jj log -r @ -T description --no-graph
+
+# 2. If empty, check which change has the work
+jj status
+
+# 3. Analyze the diff (use @- if @ is a placeholder)
+jj diff -r @
+
+# 4. Determine type from the diff, then set the description
+jj describe -r @ -m "type: concise description"
 ```
 
 ## Common Patterns
@@ -170,11 +291,13 @@ jj describe -m "refactor: extract validation logic"
 jj tug                              # Sync with remote
 jj new -m "feat: new feature"       # Start new change
 # ... make changes ...
+# Before pushing: run the Description Check Protocol if @- has no description
+jj describe -r @- -m "feat: new feature"  # Ensure description is set
 jj new                              # Finalize and start next
 ```
 
 ### Amending Current Change
-Simply make changes—they're automatically included in `@`. Use `jj describe` to update the message if needed.
+Simply make changes—they're automatically included in `@`. Use `jj describe -r @ -m "type: message"` to update the message if needed. If the change has no description yet, run the **Description Check Protocol**.
 
 ### Rebasing onto Latest
 ```bash
@@ -183,6 +306,7 @@ jj tug    # Fetches and rebases in one command
 
 ### Viewing What Will Be Pushed
 ```bash
+# Run the Description Check Protocol first — jj git push requires descriptions
 jj log -r 'remote_bookmarks()..@'    # Changes not yet on remote
 ```
 
