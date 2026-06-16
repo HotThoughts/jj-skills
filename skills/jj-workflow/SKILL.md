@@ -55,15 +55,9 @@ jj squash -m "message"
 | Combine messy commits | `jj squash -m "combined message"` |
 | Try something risky | `jj new -m "experiment"`, then `jj abandon @` if it fails |
 
-## Permission Requirements
+## Sandbox
 
-**CRITICAL**: Jujutsu commands require GPG signing and SSH/GitHub authentication. Always request elevated permissions when running `jj` or `gh` commands:
-
-```
-required_permissions: ["all"]
-```
-
-Never run `jj` commands in the default sandbox—they will fail due to authentication requirements.
+Jujutsu can be configured to sign commits (can be checked with `jj config list --include-overridden | grep -i sign`). In certain cases, this makes `jj` commands fail within the sandbox. If this is the case, re-run the command outside the sandbox. When signing is not configured, every `jj` command is supposed to work within the sandbox, there is no need to bypass it.
 
 ## Essential Commands
 
