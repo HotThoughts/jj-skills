@@ -2,6 +2,14 @@
 
 A [Claude Code](https://claude.ai/code) skills plugin for the [Jujutsu (jj)](https://github.com/martinvonz/jj) version control system.
 
+## Installation
+
+Install via [Vercel Skills](https://www.skills.sh/docs):
+
+```
+npx skills add HotThoughts/jj-skills
+```
+
 ## Skills
 
 - **jj-workflow** — Core jj concepts, essential commands, syncing, history modification, and Conventional Commits.
