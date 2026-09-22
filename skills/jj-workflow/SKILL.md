@@ -25,6 +25,19 @@ jj squash -m "message"
 
 `jj split` is inherently interactive — no non-interactive mode exists. Use `jj restore --from @- <path>` to remove a file from the current change instead.
 
+## Minimal Output
+
+Every read command MUST be bounded and summary-level. Full diffs and unbounded logs are the #1 token cost in this skill.
+
+| Instead of | Use |
+| --- | --- |
+| `jj diff` / `jj diff -r <change>` | `jj diff --stat` (per-file histogram) or `jj diff --summary` (file names) |
+| `jj log` | `jj log -n 10` (bounded) |
+| `jj op log` | `jj op log --limit 20` |
+| `jj status` to see *which files* | `jj diff --stat -r @` |
+
+Drill into one file's actual diff only when the stat line isn't enough: `jj diff -r <change> -- <path>`. `--stat`/`--summary`/`--name-only` are valid on both `jj diff` and `jj op log`.
+
 ## Core Concepts
 
 ### Changes vs Commits
@@ -64,10 +77,10 @@ Jujutsu can be configured to sign commits (can be checked with `jj config list -
 ### Viewing State
 
 ```bash
-jj status          # Show working copy status
-jj log             # View commit history
-jj diff            # Show uncommitted changes
-jj show @          # Show current change details
+jj status          # High-level repo status (conflicts, bookmarks)
+jj log -n 10       # Recent history, bounded
+jj diff --stat     # Uncommitted changes: per-file histogram
+jj show @          # Current change details
 ```
 
 ### Creating and Describing Changes
@@ -170,12 +183,10 @@ jj describe -r @ -m "refactor: extract validation logic"
 ### Step 1: Check if a description exists
 
 ```bash
-# Check the first line (used as PR title)
-jj log -r <change> -T description --no-graph | head -1
-
-# If first line is blank, check for an existing body
-jj log -r <change> -T description --no-graph | tail -n +2
+jj log -r <change> -T description --no-graph
 ```
+
+Read the full output once: first line = title, remainder = body. One call — never the head/tail split.
 
 **Gate logic:**
 
@@ -185,14 +196,17 @@ jj log -r <change> -T description --no-graph | tail -n +2
 
 ### Step 2: Pick the right change
 
-Default to `@` (working copy), but verify with `jj status` first:
+Default to `@` (working copy), but verify with `jj diff -r @ --stat` first:
 
 - If `@` has modified files, use `@`.
 - If `@` has no modified files (fresh "next task" placeholder), check `@-` before using it:
 
 ```bash
-# Check if @- has actual work
-jj diff -r @-
+# Does @ hold the work? (empty output = placeholder)
+jj diff -r @ --stat
+
+# Does @- hold the work?
+jj diff -r @- --stat
 
 # Check @- bookmarks for trunk markers
 jj log -r @- -T 'bookmarks' --no-graph
@@ -209,10 +223,10 @@ Only proceed with `@-` when it has a non-empty diff AND no trunk/remote bookmark
 ### Step 3: Analyze the diff
 
 ```bash
-jj diff -r <change>
+jj diff -r <change> --stat
 ```
 
-Focus on the high-level nature of changes: file paths, new vs modified files, and the overall purpose. If the diff is empty, warn that there are no changes to describe — do not generate a description.
+Focus on the high-level nature of changes: file paths, new vs modified files, and the overall purpose. If the diff is empty, warn that there are no changes to describe — do not generate a description. If the stat isn't enough to pick a type, drill into one file: `jj diff -r <change> -- <path>`.
 
 ### Step 4: Determine the conventional commit type
 
@@ -262,22 +276,6 @@ Rules for the description:
 - **Large diff**: Focus on the most significant files and changes. Don't try to enumerate every line.
 - **`@-` with trunk bookmark**: If `@-` carries `main`, `master`, or a remote-tracking bookmark (e.g., `main@origin`), stop and ask the user which change to target. See Step 2 safety gate.
 
-### Common Pattern: Ensuring a Change Has a Description
-
-```bash
-# 1. Check current description
-jj log -r @ -T description --no-graph
-
-# 2. If empty, check which change has the work
-jj status
-
-# 3. Analyze the diff (use @- if @ is a placeholder)
-jj diff -r @
-
-# 4. Determine type from the diff, then set the description
-jj describe -r @ -m "type: concise description"
-```
-
 ## Common Patterns
 
 ### Starting New Work
@@ -309,7 +307,7 @@ jj log -r 'remote_bookmarks()..@'    # Changes not yet on remote
 The operation log records every operation. Nothing is lost.
 
 ```bash
-jj op log              # See all operations
+jj op log --limit 20   # Recent operations, bounded
 jj undo                # Undo last operation
 jj op restore <id>     # Jump to any past state
 ```
@@ -325,7 +323,7 @@ jj new -m "fix: critical hotfix"     # New @ in the new workspace
 
 # Back in original workspace — unaffected
 cd ../myproject
-jj log                               # Other workspace's changes appear in shared history
+jj log -n 10                         # Other workspace's changes appear in shared history
 
 # Clean up when done
 jj workspace forget hotfix           # Run from any other workspace
