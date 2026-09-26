@@ -16,6 +16,7 @@ npx skills add HotThoughts/jj-skills
 - **jj-create-pr** — AI-enhanced GitHub PR creation from jj changes with auto-generated descriptions based on diffs.
 - **jj-update-pr** — Updates existing PR descriptions with fresh AI-generated content based on the current diff.
 - **jj-gh-stack** — GitHub stacked PRs from a jj repo: bookmark-per-layer, `gh stack link`, relinking after rewrite, unstack/relink recovery, and merge.
+- **jj-cleanup** — Remove the local bookmarks, revisions, and workspaces left behind by merged or closed PRs with `jj cleanup` / `jj cl`.
 
 ## License
 
