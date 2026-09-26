@@ -165,7 +165,8 @@ Merges that PR and everything below it, all-or-nothing. Without an argument it r
 from the current git branch, which fails under jj's detached HEAD — always pass a PR or stack
 number. Discovery of a stack number, or of your position in a stack, comes from the number shown in
 the GitHub stack UI or the GraphQL query below. For a partial merge, `jj git fetch` afterwards and
-rebase the surviving layers onto the new trunk before relinking.
+rebase the surviving layers onto the new trunk before relinking. Once a stack has merged, prune the
+per-layer bookmarks with `jj cleanup` (see the `jj-cleanup` skill).
 
 ## Status without local tracking
 
