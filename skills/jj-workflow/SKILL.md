@@ -23,7 +23,7 @@ jj describe -m "message"
 jj squash -m "message"
 ```
 
-`jj split` is inherently interactive — no non-interactive mode exists. Use `jj restore --from @- <path>` to remove a file from the current change instead.
+`jj split` is non-interactive only when given both `-m` and paths: `jj split -r <change> -m "type: first part" <path>...` moves those paths into a new first commit and leaves the rest, with the original description, in the second. Without paths it opens a diff editor; without `-m` it blocks on the description editor. Never pass `-i`/`--interactive` (`jj split`, `jj squash`, `jj absorb`, `jj commit`), and avoid `jj resolve` (merge tool), `jj file edit`, and `jj arrange` (TUI).
 
 ## Minimal Output
 
@@ -66,11 +66,19 @@ Drill into one file's actual diff only when the stat line isn't enough: `jj diff
 | Stop tracking an ignored file | Add ignore rule first, then `jj file untrack <path>` |
 | Stop tracking ignored directory contents | Add ignore rule first, then `jj file untrack 'glob:dir/**'` |
 | Combine messy commits | `jj squash -m "combined message"` |
+| Split some files into their own commit | `jj split -r <change> -m "type: message" <path>...` |
+| Fold fixups into the commits that last touched those lines | `jj absorb` |
+| Delete a file in another revision without checking it out | `jj file delete -r <change> <path>` |
+| Bring the stack up to date with trunk | `jj git fetch`, then `jj rebase -o 'trunk()'` |
+| Move a bookmark forward to new work | `jj bookmark advance --to <change>` |
+| Same change ID shows as divergent (`??`) | `jj converge -r <change-id> --no-interactive` (`-r` avoids the "pick a change" prompt; `--no-interactive` exits instead of prompting when heuristics are inconclusive) |
 | Try something risky | `jj new -m "experiment"`, then `jj abandon @` if it fails |
 
 ## Sandbox
 
 Jujutsu can be configured to sign commits (can be checked with `jj config list --include-overridden | grep -i sign`). In certain cases, this makes `jj` commands fail within the sandbox. If this is the case, re-run the command outside the sandbox. When signing is not configured, every `jj` command is supposed to work within the sandbox, there is no need to bypass it.
+
+Signing on push is configured with `revsets.git-sign-on-push` (jj 0.47.1+, a revset such as `~signed() & mine()`), which replaces the deprecated `git.sign-on-push = true`. Since 0.47, `jj git push` signs in a separate operation before pushing, so if the push itself fails, the commits stay signed and a retry does not sign again.
 
 ## Essential Commands
 
@@ -94,11 +102,14 @@ jj new -m "feat: message"             # Create new change with message
 ### Syncing with Remote
 
 ```bash
-jj tug                         # Fetch updates and rebase current change onto latest remote
-jj git fetch                   # Fetch from remote without rebasing
+jj git fetch                   # Fetch bookmarks and tags from remote (no rebase)
+jj rebase -o 'trunk()'         # Rebase the branch containing @ onto the latest trunk
+jj bookmark advance            # Move the nearest bookmark(s) on @'s ancestry forward to @ (--to <rev> for another target)
 jj git push                    # Push current changes to remote (requires description on the change)
 jj git push --bookmark <name>  # Push AND set up remote tracking (like git push -u origin <branch>)
 ```
+
+`jj tug` is not a built-in command. It is a community alias that moves bookmarks forward and does not fetch or rebase. `jj bookmark advance` is the built-in replacement, so prefer it over `jj tug`. Rebase with `-o`/`--onto`. `-d`/`--destination` still works but is deprecated.
 
 `jj git push` will **reject changes without descriptions** ("no description set"). Always run the Description Check Protocol before pushing.
 `jj git push --bookmark <name>` is the unified push+track command — it creates the bookmark on the remote and sets up tracking in one step.
@@ -108,7 +119,10 @@ jj git push --bookmark <name>  # Push AND set up remote tracking (like git push 
 ```bash
 jj squash                        # Squash current change into parent
 jj squash --into @-              # Explicitly squash into parent
-jj restore --from @- <path>      # Remove a file from current change (non-interactive alternative to split)
+jj restore --from @- <path>      # Remove a file from current change
+jj split -m "type: msg" <path>   # Move <path> into its own commit (needs -m and paths to stay non-interactive)
+jj absorb                        # Move each hunk of @ into the mutable ancestor that last touched those lines
+jj file delete -r <change> <path> # Delete a file in any revision; descendants are rebased
 jj file untrack <path>           # Stop tracking a path that is already ignored
 jj edit <change-id>              # Edit an existing change
 ```
@@ -146,8 +160,9 @@ Workspaces are jj's equivalent of git worktrees — multiple working directories
 
 ```bash
 jj workspace add <path>          # Create new workspace at path (e.g., ../myproject-fix)
-jj workspace list                # List all workspaces with their @ revisions
-jj workspace forget <name>       # Stop tracking a workspace (run from another workspace)
+jj workspace list                # List all workspaces with their roots and @ revisions
+jj workspace remove <name>       # Snapshot its @, forget it, delete its directory (and Git worktree)
+jj workspace forget <name>       # Stop tracking a workspace; leaves the directory on disk
 jj workspace root                # Print the root path of current workspace
 jj workspace update-stale        # Fix a stale working copy after concurrent changes
 ```
@@ -156,6 +171,10 @@ jj workspace update-stale        # Fix a stale working copy after concurrent cha
 - No branch locking — multiple workspaces can check out the same revision simultaneously
 - Each workspace gets its own `@` change automatically on creation
 - Changes made in one workspace don't affect another's `@`
+- In a colocated repo (jj 0.46+), `jj workspace add` also creates a Git worktree (detached HEAD), so `git` and Git-aware tools work there too. Control this with `--colocate`/`--no-colocate` or `git.colocate`.
+- By default, `jj undo`/`jj redo` refuse an operation made in another workspace. To revert that specific operation, use `jj op revert <op-id>`. Use `--allow-cross-workspace` only when the user asks for it.
+
+`jj workspace remove` keeps the working-copy commit, but it deletes the directory, including ignored files such as `.env` and build output. Check before removing a workspace someone else created.
 
 ## Commit Message Format
 
@@ -280,8 +299,8 @@ Rules for the description:
 
 ### Starting New Work
 ```bash
-jj tug                              # Sync with remote
-jj new -m "feat: new feature"       # Start new change
+jj git fetch                        # Sync with remote
+jj new 'trunk()' -m "feat: new feature"  # Start new change on latest trunk
 # ... make changes ...
 # Before pushing: run the Description Check Protocol if @- has no description
 jj describe -r @- -m "feat: new feature"  # Ensure description is set
@@ -293,7 +312,8 @@ Simply make changes—they're automatically included in `@`. Use `jj describe -r
 
 ### Rebasing onto Latest
 ```bash
-jj tug    # Fetches and rebases in one command
+jj git fetch
+jj rebase -o 'trunk()'    # Rebases the whole branch containing @ (default is -b @)
 ```
 
 ### Viewing What Will Be Pushed
@@ -308,7 +328,8 @@ The operation log records every operation. Nothing is lost.
 
 ```bash
 jj op log --limit 20   # Recent operations, bounded
-jj undo                # Undo last operation
+jj undo                # Undo last operation (refuses one from another workspace by default)
+jj op revert <id>      # Revert one specific operation, keeping later ones
 jj op restore <id>     # Jump to any past state
 ```
 
@@ -325,9 +346,8 @@ jj new -m "fix: critical hotfix"     # New @ in the new workspace
 cd ../myproject
 jj log -n 10                         # Other workspace's changes appear in shared history
 
-# Clean up when done
-jj workspace forget hotfix           # Run from any other workspace
-rm -rf ../myproject-hotfix           # Remove the directory
+# Clean up when done (the hotfix commit stays in history)
+jj workspace remove myproject-hotfix # Workspace name defaults to the directory name
 ```
 
 **Use cases:**
@@ -343,3 +363,5 @@ rm -rf ../myproject-hotfix           # Remove the directory
 4. **Anonymous branches**: You can work without named branches
 5. **Automatic conflict handling**: Conflicts are recorded and can be resolved later
 6. **Workspaces**: Multiple working copies without branch locking (vs git worktrees which require a unique branch per worktree)
+
+Behaviour here was checked against jj 0.46.0. The 0.47 items (push signing) come from the jj changelog. `jj <command> --help` is authoritative.
